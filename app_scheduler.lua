@@ -8,7 +8,7 @@
 --
 
 local FILE_READ_PARAM = _VERSION:sub(5) < "5.3" and "*a" or "a"
-local PS_PREFIX_PARAM = "ps u -p " -- for linux
+local PS_PREFIX_PARAM = "ps u -p " -- for Linux or FreeBSD
 
 local sched = {
    v_tmp_path = string.format("/tmp/app_scheduler_%d.tmp", os.time()),
@@ -213,7 +213,8 @@ if arg_file_path and
    (arg_operation:lower() == "start" or arg_operation:lower() == "stop")
 then
    -- process platform dependent param
-   if _content_from_exec( "uname" ):find("Darwin") then
+   local uname = _content_from_exec( "uname" )
+   if uname:find("Darwin") then
       PS_PREFIX_PARAM = "ps -v -p "
    end
 else
@@ -303,7 +304,7 @@ while true do
    sched.f_jobs_monitor( sched.sandbox )
    
    if _check_exit_file_mark( sched ) then
-      sched.sandbox.exit( 0 )
       _print_fmt("app_job [%s] exited !", sched.v_spec_name)
+      sched.sandbox.exit( 0 )
    end
 end
