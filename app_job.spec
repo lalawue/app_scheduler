@@ -57,11 +57,11 @@ jobs_scheduler = {
    -- 
    -- * sched.sleep( number )
    -- 
-   
+
    jobs_launch = function ( sched )
-      
+
       for _, job in ipairs(sched.app_jobs) do
-         
+
          sched.launch_job( job )
          print( job.name, "pid:", job.pid)
          
@@ -71,12 +71,12 @@ jobs_scheduler = {
          end
       end
    end,
-   
+
 
    jobs_monitor = function ( sched )
 
       local exit_app = false
-      
+
       for _, job in ipairs(sched.running_jobs) do
          print( job.name, "pid: ", job.pid, "cpu:", job.ps.cpu, "mem:", job.ps.mem)
 
@@ -90,10 +90,7 @@ jobs_scheduler = {
       end
 
       if exit_app then
-         for _, job in ipairs(sched.running_jobs) do
-            sched.kill_job(job)
-         end
-         sched.exit(1)
+         sched.exit( 1 )
       else
          sched.sleep( 1.5 )
       end

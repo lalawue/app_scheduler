@@ -4,8 +4,11 @@
 -- load app from specifcation, launch then monitor jobs, return
 -- status with callback
 --
--- by lalawue, 2018/06/20
+-- by lalawue, 2018/06/23
 --
+
+local FILE_READ_PARAM = _VERSION:sub(5) < "5.3" and "*a" or "a"
+local PS_PREFIX_PARAM = "ps u -p " -- for linux
 
 local sched = {
    v_tmp_path = string.format("/tmp/app_scheduler_%d.tmp", os.time()),
@@ -22,6 +25,8 @@ local sched = {
 
    sandbox = {},                -- sandbox for user operation
 }
+
+
 
 
 
@@ -48,6 +53,8 @@ local function _split(input, delimiter, plain)
 end
 
 
+
+
 --
 -- Internal Function
 -- 
@@ -55,16 +62,17 @@ end
 local function _content_from_file( file_path )
    local fp = io.open(file_path, "r")
    if fp then
-      local content = fp:read("a")
+      local content = fp:read(FILE_READ_PARAM)
       fp:close()
       return content
    end
 end
 
 local function _content_from_exec( cmd )
-   local fp = io.popen( cmd )
+   os.execute( string.format("%s > %s", cmd, sched.v_tmp_path) )
+   local fp = io.open(sched.v_tmp_path, "r")
    if fp then
-      local content = fp:read("a")
+      local content = fp:read(FILE_READ_PARAM)
       fp:close()
       return content
    end
@@ -115,7 +123,7 @@ local function _process_status_of_running_jobs()
    end
 
    local pids = table.concat(sched.v_running_pids, " -p ")
-   local sh_cmd = string.format("ps -v -p %s", pids)
+   local sh_cmd = string.format("%s %s", PS_PREFIX_PARAM, pids)
    --_print_fmt(cmd)
    local content = _content_from_exec( sh_cmd )
 
@@ -137,6 +145,7 @@ local function _process_status_of_running_jobs()
       end
    end
 end
+
 
 
 
@@ -181,14 +190,16 @@ function sched.sandbox.sleep( number )
    os.execute("sleep " .. number)
 end
 
--- remove all temp file
+-- kill all running_jobs then remove all temp file
 function sched.sandbox.exit( code )
+   for _, job in ipairs(sched.v_running_jobs) do
+      sched.sandbox.kill_job(job)
+   end
    os.remove(sched.v_lock_path)
    os.remove(sched.v_stop_path)
    os.remove(sched.v_tmp_path)
    os.exit( code )
 end
-
 
 
 
@@ -201,23 +212,18 @@ local arg_operation, arg_file_path = ...
 if arg_file_path and
    (arg_operation:lower() == "start" or arg_operation:lower() == "stop")
 then
-   -- do nothing
+   -- process platform dependent param
+   if _content_from_exec( "uname" ):find("Darwin") then
+      PS_PREFIX_PARAM = "ps -v -p "
+   end
 else
    _print_fmt("[start | stop] app_job.spec")
    os.exit(0)
 end
 
 
--- job desc content
-local app_jobs_desc_content = _content_from_file( arg_file_path )
-if app_jobs_desc_content:len() <= 0 then
-   _print_fmt("fail to load app job desc !")
-   os.exit(0)
-end
-
-
 -- Lua job desc structure
-local jobs_spec = load( "return { " ..  app_jobs_desc_content .. " } ")()
+local jobs_spec = load( "return { " ..  _content_from_file( arg_file_path ) .. " } ")()
 if not jobs_spec then
    _print_fmt("fail to load job spec !")
    os.exit(0)
@@ -238,8 +244,9 @@ else
    sched.f_jobs_monitor = jobs_spec.jobs_scheduler.jobs_monitor
 
    jobs_spec = nil
-   app_jobs_desc_content = nil
 end
+
+
 
 
 --
@@ -266,6 +273,8 @@ if arg_operation == "stop" then
 end
 
 
+
+
 --
 -- Start Job Procedure
 -- 
@@ -277,14 +286,16 @@ end
 
 _print_fmt("app_job [%s] start ...", sched.v_spec_name)
 
--- launch job step
 sched.sandbox.app_jobs = sched.v_app_jobs
+sched.sandbox.running_jobs = sched.v_running_jobs
+
+-- launch jobs
 sched.f_jobs_launch( sched.sandbox )
 
-_content_from_exec( string.format("touch %s", sched.v_lock_path) ) -- mark running
+-- mark running
+_content_from_exec( string.format("touch %s", sched.v_lock_path) )
 
--- monitor job step
-sched.sandbox.running_jobs = sched.v_running_jobs
+-- monitor jobs
 while true do
    _check_running_jobs( sched )
    _process_status_of_running_jobs( sched.v_running_jobs )
@@ -292,7 +303,7 @@ while true do
    sched.f_jobs_monitor( sched.sandbox )
    
    if _check_exit_file_mark( sched ) then
-      _print_fmt("app_job [%s] received exit file mark !", sched.v_spec_name)
-      sched.sandbox.exit(0)      
+      sched.sandbox.exit( 0 )
+      _print_fmt("app_job [%s] exited !", sched.v_spec_name)
    end
 end
