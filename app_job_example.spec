@@ -77,14 +77,17 @@ jobs_scheduler = {
    jobs_launch = function ( sched )
 
       sched.f_my_print("my pre-defined value: %d", sched.v_my_pre_defined_value)
+      sched.v_my_pre_defined_value = 0
 
       -- you can reset job.env or job.path before .f_start_job
       for _, job in ipairs(sched.v_app_jobs) do
-
+         
+         job.dir = os.getenv("PWD")
+         
          sched.f_start_job( job )
          sched.f_my_print("[%s] pid: %d", job.name, job.pid)
          
-         if job.name == "job1" then
+         if job.name == "job_1" then
             job.count = 0       -- create new value
             sched.f_sleep( 1.5 )
          end
@@ -99,12 +102,14 @@ jobs_scheduler = {
    jobs_monitor = function ( sched )
 
       local time_out = false
+      sched.v_my_pre_defined_value = sched.v_my_pre_defined_value + 1
+      sched.f_my_print("## --- monitor times %d, in <%s> --- ", sched.v_my_pre_defined_value, os.date("%c"))
 
       for pid, job in pairs(sched.v_running_jobs) do
          sched.f_my_print("[%s] cpu:%s, mem:%s", job.name, job.ps.cpu, job.ps.mem)
 
-         if job.name == "job1" then
-            if job.count < 10 then
+         if job.name == "job_1" then
+            if job.count < 20 then
                job.count = job.count + 1
             else
                time_out = true

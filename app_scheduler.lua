@@ -15,7 +15,7 @@ local PS_PREFIX_PARAM = "ps u -p "
 
 
 local sched = {
-   v_tmp_path = string.format("/tmp/app_scheduler_%d.tmp", os.time()),
+   v_tmp_path = string.format("/tmp/app_scheduler_tmp.%d", os.time()),
    v_lock_path = "",            -- file to mark running
    v_stop_path = "",            -- file to mark stop
 
