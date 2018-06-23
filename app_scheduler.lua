@@ -7,8 +7,12 @@
 -- by lalawue, 2018/06/23
 --
 
+
+
 local FILE_READ_PARAM = _VERSION:sub(5) < "5.3" and "*a" or "a"
 local PS_PREFIX_PARAM = "ps u -p "
+
+
 
 local sched = {
    v_tmp_path = string.format("/tmp/app_scheduler_%d.tmp", os.time()),
@@ -134,7 +138,7 @@ local function _collect_process_status_of_jobs( running_jobs )
       end
    end
 
-   -- return running job count
+   -- return running jobs count
    return pid_count
 end
 
@@ -142,9 +146,10 @@ end
 
 
 --
--- Sandbox Function
+-- Pre-defined Function
 --
 
+-- start job as process
 function _sandbox_start_job( job )
    -- 1. cd to dir
    -- 2. set env in shell
@@ -173,6 +178,7 @@ function _sandbox_start_job( job )
    return 0
 end
 
+-- kill job process
 function _sandbox_kill_job( job, sig_number )
    if job.pid > 0 then
       sig_number = sig_number and sig_number or 9
@@ -183,11 +189,12 @@ function _sandbox_kill_job( job, sig_number )
    end
 end
 
+-- sleep seconds
 function _sandbox_sleep( number )
    os.execute("sleep " .. number)
 end
 
--- kill all running_jobs then remove all temp file
+-- kill all running jobs, remove all temp file, then exit program
 function _sandbox_exit( code )
    for _, job in pairs(sched.v_running_jobs) do
       _sandbox_kill_job(job)
@@ -198,7 +205,7 @@ function _sandbox_exit( code )
    os.exit( code )
 end
 
-
+-- reset with pre-defined value and function
 local function _reset_sandbox_values( sandbox )
    sandbox.v_app_jobs = sched.v_app_jobs
    sandbox.v_running_jobs = sched.v_running_jobs
@@ -229,7 +236,7 @@ else
 end
 
 
--- Lua job desc structure
+-- Lua job desc structure, no more backtrace here
 local jobs_spec = load( "return { " ..  _content_from_file( arg_file_path ) .. " } ")()
 if not jobs_spec then
    _print_fmt("fail to load job spec !")
@@ -262,10 +269,14 @@ end
 -- Stop Job Procedure
 -- 
 if arg_operation == "stop" then
+   
+   -- check running file mark
    if not _content_from_file( sched.v_lock_path ) then
       _print_fmt("app_job [%s] was stopped", sched.v_spec_name)
       os.exit(0)
    end
+   
+   -- create stop file mark, check stopped state in 3 seconds
    _content_from_exec(string.format("touch %s", sched.v_stop_path))
    local i = 0
    local timeout = 3
@@ -274,11 +285,15 @@ if arg_operation == "stop" then
       _print_fmt("waiting app_job [%s] to stop, %d seconds", sched.v_spec_name, i)
       i = i + 1
    until (i>timeout) or (not _content_from_file( sched.v_lock_path ))
+   
+   -- check result
    if i > timeout then
       _print_fmt("app_job [%s] fail to stop, timeout %d seconds", sched.v_spec_name, timeout)
    else
       _print_fmt("app_job [%s] stopped", sched.v_spec_name)
    end
+
+   -- exit
    _sandbox_exit( 0 )
 end
 
@@ -289,30 +304,33 @@ end
 -- Start Job Procedure
 -- 
 
--- check job integrity
+-- check job integrity, reset default job value
 for _, job in ipairs(sched.v_app_jobs) do
    _check_job_integrity(job)
 end
 
 _print_fmt("app_job [%s] start ...", sched.v_spec_name)
 
--- reset vals
+-- reset sandbox values
 _reset_sandbox_values( sched.sandbox )
 
 -- launch jobs
 sched.f_jobs_launch( sched.sandbox )
 
--- mark running
+-- mark running state
 _content_from_exec( string.format("touch %s", sched.v_lock_path) )
 
 -- monitor jobs
 while true do
+   -- refresh process status
    sched.sandbox.v_running_job_count = _collect_process_status_of_jobs( sched.v_running_jobs )
 
+   -- call monitor with sandbox
    sched.f_jobs_monitor( sched.sandbox )
-   
+
+   -- check stop file mark
    if _check_exit_file_mark( sched ) then
-      _print_fmt("app_job [%s] exited !", sched.v_spec_name)
+      _print_fmt("app_job [%s] exit !", sched.v_spec_name)
       sched.sandbox.f_exit( 0 )
    end
 end
