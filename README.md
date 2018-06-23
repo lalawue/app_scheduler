@@ -48,7 +48,7 @@ and environment not test.
 1. first comple busy_app_demo.c, then start 3 app jobs
 
 ```
-# gcc -Wall busy_app_demo.c -o busy_app.out # cc in FreeBSD
+# make   # gmake in FreeBSD
 # lua app_scheduler.lua start app_job_example.spec
 ```
 
