@@ -2,29 +2,33 @@
 -- app_jobs specification example
 --
 
+
+-- spec name
 spec_name = "app_job_example",
 
+
+-- pre-defined app jobs
 app_jobs = {
    
    {
-      name = "job1",
+      name = "job_1",
       dir = "/Volumes/Datas/repos/_projs/lua_task",
       env = "TTT=HAHAHA; BB=CC;",
       app = "busy_app.out 10000",
       --
-      pid = 0,            -- process id, after sched.f_start_job
-      ps = {},            -- process status, .cpu, .mem, in jobs_monitor
+      pid = 0, -- process id, valid after sched.f_start_job
+      ps = {}, -- process status, contains .cpu, .mem, valid in jobs_monitor
    },
 
    {
-      name = "job2",
+      name = "job_2",
       dir = "/Volumes/Datas/repos/_projs/lua_task",
       env = "",
       app = "busy_app.out 1000000",
    },
 
    {
-      name = "job3",
+      name = "job_3",
       dir = "/Volumes/Datas/repos/_projs/lua_task",
       env = nil,
       app = "busy_app.out 100000",
@@ -32,64 +36,87 @@ app_jobs = {
 },
 
 
-
+-- for launch and monitor app jobs
 jobs_scheduler = {
 
-   -- sched interface
-   --
    -- 
+   -- Pre-defined variables and functions, will overide same name
+   --
    -- variables
    -- 
-   -- * sched.v_app_jobs
-   -- * sched.v_running_jobs ([key, value] is [pid, job])
-   -- * sched.v_running_job_count
+   -- * sched.v_app_jobs: user defined jobs, you can add new job in runtime
+   -- * sched.v_running_jobs: running jobs, with pid > 0, key is pid
+   -- * sched.v_running_job_count: running jobs count, valid in jos_monitor
    --
    -- 
    -- functions
    -- 
-   -- * sched.f_start_job( job )
-   -- * sched.f_kill_job( job, signal_number )
+   -- * sched.f_start_job( job ): start a new job, can run new job at runtime
+   -- * sched.f_kill_job( job, signal_number ): kill job
    -- 
-   -- * sched.f_sleep( number )
-   -- * sched.f_exit( code )
+   -- * sched.f_sleep( number ): sleep seconds
+   -- * sched.f_exit( code ): exit this program
+   --
+
+   -- 
+   -- User-defined functions [ MUST ]
+   -- 
+   -- * sched.jobs_launch( sched ): run only once at the beginning
+   -- * sched.jobs_monitor( sched ): get job running status before running, loop forever
    -- 
 
+   v_my_pre_defined_value = 100,
+   
+   f_my_print = function(fmt, ...)
+      print(string.format(fmt, ...))
+   end,
+
+   
+
+   -- run only once, param 'sched' was jobs_scheduler
    jobs_launch = function ( sched )
 
+      sched.f_my_print("my pre-defined value: %d", sched.v_my_pre_defined_value)
+
+      -- you can reset job.env or job.path before .f_start_job
       for _, job in ipairs(sched.v_app_jobs) do
 
          sched.f_start_job( job )
-         print( job.name, "pid:", job.pid)
+         sched.f_my_print("[%s] pid: %d", job.name, job.pid)
          
          if job.name == "job1" then
-            job.count = 0       -- init value
-            sched.f_sleep(1)
+            job.count = 0       -- create new value
+            sched.f_sleep( 1.5 )
          end
       end
+
+      
    end,
 
+   
 
+   -- loop forever, will refresh job process status before running
    jobs_monitor = function ( sched )
 
-      local exit_app = false
+      local time_out = false
 
       for pid, job in pairs(sched.v_running_jobs) do
-         print( job.name, "pid: ", job.pid, "cpu:", job.ps.cpu, "mem:", job.ps.mem)
+         sched.f_my_print("[%s] cpu:%s, mem:%s", job.name, job.ps.cpu, job.ps.mem)
 
          if job.name == "job1" then
             if job.count < 10 then
                job.count = job.count + 1
             else
-               exit_app = true
+               time_out = true
             end
          end
       end
 
-      if sched.v_running_job_count<#sched.v_app_jobs or exit_app then
-         print("befor exit ", exit_app)
+      if sched.v_running_job_count<#sched.v_app_jobs or time_out then
+         sched.f_my_print("exit with running jobs count %d", sched.v_running_job_count)
          sched.f_exit( 1 )
       else
-         sched.f_sleep( 1.5 )
+         sched.f_sleep( 1.2 )
       end
    end,
 }

@@ -88,6 +88,7 @@ local function _check_job_integrity( job )
    job.env = job.env and job.env or ""
    job.app = job.app or nil
    job.pid = 0
+   job.ps = nil
 end
 
 -- collect running jobs process status
@@ -108,6 +109,7 @@ local function _collect_process_status_of_jobs( running_jobs )
 
       for i=2, #lines do
          local vals = _split( lines[i], " +", false)
+         
          if #vals >= #keys then
             pid_count = pid_count + 1
             local ps = {}
@@ -116,7 +118,7 @@ local function _collect_process_status_of_jobs( running_jobs )
                if k:len() > 2 then
                   ps[k] = vals[j]
                   if k == "pid" then
-                     running_jobs[vals[j]].ps = ps -- reset ps
+                     running_jobs[vals[j]].ps = ps -- reset ps in job
                   end
                end
             end
@@ -124,7 +126,7 @@ local function _collect_process_status_of_jobs( running_jobs )
       end
    end
 
-   -- reset stopped jobs
+   -- clean stopped jobs
    for pid, job in pairs(running_jobs) do
       if not job.ps then
          running_jobs[pid].pid = 0
@@ -132,6 +134,7 @@ local function _collect_process_status_of_jobs( running_jobs )
       end
    end
 
+   -- return running job count
    return pid_count
 end
 
@@ -142,17 +145,11 @@ end
 -- Sandbox Function
 --
 
-local function _reset_sandbox_values( sandbox )
-   sandbox.v_app_jobs = sched.v_app_jobs
-   sandbox.v_running_jobs = sched.v_running_jobs
-   sandbox.v_running_job_count = 0
-end
-
-function sched.sandbox.f_start_job( job )
+function _sandbox_start_job( job )
    -- 1. cd to dir
    -- 2. set env in shell
    -- 3. run app in background
-   -- 4. get returned pid from tmp file
+   -- 4. get pid from tmp file
    
    if job.app and (job.pid<=0 or not job.pid) then
       local sh_cmd = "cd '" .. job.dir .. "';"
@@ -171,34 +168,47 @@ function sched.sandbox.f_start_job( job )
          return job.pid
       end
    else
-      _print_fmt("invalid app or app was running")
+      _print_fmt("invalid app or app was started")
    end
    return 0
 end
 
-function sched.sandbox.f_kill_job( job, sig_number )
+function _sandbox_kill_job( job, sig_number )
    if job.pid > 0 then
       sig_number = sig_number and sig_number or 9
       os.execute(string.format("kill -%d %d", sig_number, job.pid))
       sched.v_running_jobs[tostring(job.pid)] = nil
       job.pid = 0
-      job.ps = {}
+      job.ps = nil
    end
 end
 
-function sched.sandbox.f_sleep( number )
+function _sandbox_sleep( number )
    os.execute("sleep " .. number)
 end
 
 -- kill all running_jobs then remove all temp file
-function sched.sandbox.f_exit( code )
+function _sandbox_exit( code )
    for _, job in pairs(sched.v_running_jobs) do
-      sched.sandbox.f_kill_job(job)
+      _sandbox_kill_job(job)
    end
    os.remove(sched.v_lock_path)
    os.remove(sched.v_stop_path)
    os.remove(sched.v_tmp_path)
    os.exit( code )
+end
+
+
+local function _reset_sandbox_values( sandbox )
+   sandbox.v_app_jobs = sched.v_app_jobs
+   sandbox.v_running_jobs = sched.v_running_jobs
+   sandbox.v_running_job_count = 0
+   
+   sandbox.f_start_job = _sandbox_start_job
+   sandbox.f_kill_job = _sandbox_kill_job
+   
+   sandbox.f_sleep = _sandbox_sleep
+   sandbox.f_exit = _sandbox_exit
 end
 
 
@@ -240,6 +250,8 @@ else
    sched.f_jobs_launch = jobs_spec.jobs_scheduler.jobs_launch
    sched.f_jobs_monitor = jobs_spec.jobs_scheduler.jobs_monitor
 
+   sched.sandbox = jobs_spec.jobs_scheduler
+
    jobs_spec = nil
 end
 
@@ -258,16 +270,16 @@ if arg_operation == "stop" then
    local i = 0
    local timeout = 3
    repeat
-      sched.sandbox.f_sleep(1)
+      _sandbox_sleep( 1 )
       _print_fmt("waiting app_job [%s] to stop, %d seconds", sched.v_spec_name, i)
       i = i + 1
    until (i>timeout) or (not _content_from_file( sched.v_lock_path ))
-   if i>timeout then
+   if i > timeout then
       _print_fmt("app_job [%s] fail to stop, timeout %d seconds", sched.v_spec_name, timeout)
    else
       _print_fmt("app_job [%s] stopped", sched.v_spec_name)
    end
-   sched.sandbox.f_exit(0)
+   _sandbox_exit( 0 )
 end
 
 
@@ -295,7 +307,6 @@ _content_from_exec( string.format("touch %s", sched.v_lock_path) )
 
 -- monitor jobs
 while true do
-   _reset_sandbox_values( sched.sandbox )
    sched.sandbox.v_running_job_count = _collect_process_status_of_jobs( sched.v_running_jobs )
 
    sched.f_jobs_monitor( sched.sandbox )
