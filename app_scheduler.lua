@@ -8,7 +8,7 @@
 --
 
 local FILE_READ_PARAM = _VERSION:sub(5) < "5.3" and "*a" or "a"
-local PS_PREFIX_PARAM = "ps u -p " -- for Linux or FreeBSD
+local PS_PREFIX_PARAM = "ps u -p "
 
 local sched = {
    v_tmp_path = string.format("/tmp/app_scheduler_%d.tmp", os.time()),
@@ -16,9 +16,8 @@ local sched = {
    v_stop_path = "",            -- file to mark stop
 
    v_spec_name = "",            -- app_job spec name
-   v_app_jobs = {},             -- user defined app jobs
-   v_running_jobs = {},         -- running jobs
-   v_running_pids = {},         -- pids collected from running jobs
+   v_app_jobs = {},             -- array
+   v_running_jobs = {},         -- key is tostring(pid)
 
    f_jobs_launch = function() end,
    f_jobs_monitor = function() end,
@@ -82,118 +81,119 @@ local function _check_exit_file_mark( sched )
    return sched.v_lock_path and _content_from_file(sched.v_stop_path)
 end
 
+-- mark pre-defined job
 local function _check_job_integrity( job )
    job.name = job.name and job.name or "(-.-)"
    job.dir = job.dir and job.dir or "~"
    job.env = job.env and job.env or ""
    job.app = job.app or nil
    job.pid = 0
-   job.ps = {}
 end
 
--- remove stopped job from running_jobs, collect running pids
-local function _check_running_jobs( sched )
-   sched.v_running_pids = {}
-   local count = #sched.v_running_jobs
-   local i = 1
-   -- move stopped job to the end
-   while i <= count do
-      local job = sched.v_running_jobs[i]
-      if job.pid > 0 then
-         i = i + 1
-         sched.v_running_pids[#sched.v_running_pids + 1] = job.pid
-      else
-         local tmp = sched.v_running_jobs[count]
-         sched.v_running_jobs[count] = job
-         sched.v_running_jobs[i] = tmp
-         count = count - 1
-      end
-   end
-   -- remove from running_jobs
-   for i = count + 1, #sched.v_running_jobs do
-      sched.v_running_jobs[i].running_index = 0
-      sched.v_running_jobs[i] = nil
-   end
-end
-
--- collect running pids process status
-local function _process_status_of_running_jobs()
-   if #sched.v_running_pids <= 0 then
-      return
+-- collect running jobs process status
+local function _collect_process_status_of_jobs( running_jobs )
+   local pids = {}
+   for pid, job in pairs(running_jobs) do
+      pids[#pids + 1] = pid
+      job.ps = nil              -- mark
    end
 
-   local pids = table.concat(sched.v_running_pids, " -p ")
-   local sh_cmd = string.format("%s %s", PS_PREFIX_PARAM, pids)
+   local sh_cmd = string.format("%s %s", PS_PREFIX_PARAM, table.concat(pids, " -p "))
    --_print_fmt(cmd)
-   local content = _content_from_exec( sh_cmd )
 
-   local lines = _split( content, "\n", true)
+   local lines = _split( _content_from_exec( sh_cmd ), "\n", true)
+   local pid_count = 0
    if #lines >= 2 then
       local keys = _split( lines[1], " +", false)
 
-      for i, job in ipairs(sched.v_running_jobs) do
-         local vals = _split( lines[i + 1], " +", false)
-         if not job.ps then
-            job.ps = {}
-         end
-         for j, v in ipairs(keys) do
-            local k = string.gsub(v, "%%", "")
-            if k:len() > 2 then
-               job.ps[string.lower(k)] = vals[j]
+      for i=2, #lines do
+         local vals = _split( lines[i], " +", false)
+         if #vals >= #keys then
+            pid_count = pid_count + 1
+            local ps = {}
+            for j, v in ipairs(keys) do
+               local k = v:gsub("%%", ""):lower()
+               if k:len() > 2 then
+                  ps[k] = vals[j]
+                  if k == "pid" then
+                     running_jobs[vals[j]].ps = ps -- reset ps
+                  end
+               end
             end
          end
       end
    end
+
+   -- reset stopped jobs
+   for pid, job in pairs(running_jobs) do
+      if not job.ps then
+         running_jobs[pid].pid = 0
+         running_jobs[pid] = nil
+      end
+   end
+
+   return pid_count
 end
 
 
 
 
 --
--- Public Function
+-- Sandbox Function
 --
 
-function sched.sandbox.launch_job( job )
-   -- 1. cd to DIR
+local function _reset_sandbox_values( sandbox )
+   sandbox.v_app_jobs = sched.v_app_jobs
+   sandbox.v_running_jobs = sched.v_running_jobs
+   sandbox.v_running_job_count = 0
+end
+
+function sched.sandbox.f_start_job( job )
+   -- 1. cd to dir
    -- 2. set env in shell
    -- 3. run app in background
    -- 4. get returned pid from tmp file
    
-   if job.app and job.pid <= 0 then
+   if job.app and (job.pid<=0 or not job.pid) then
       local sh_cmd = "cd '" .. job.dir .. "';"
          .. job.env .. " "
          .. "./" .. job.app .. " > /dev/null & "
          .. "echo $! > " .. sched.v_tmp_path
       -- _print_fmt( sh_cmd )
       os.execute( sh_cmd )
-      job.pid = tonumber(_content_from_file( sched.v_tmp_path ))
-      if job.pid > 0 then
-         if not job.running_index or job.running_index <= 0 then
-            job.running_index = #sched.v_running_jobs + 1
-            sched.v_running_jobs[job.running_index] = job
+      local pid = tonumber( _content_from_file( sched.v_tmp_path ) )
+      if pid > 0 then
+         if not job.pid then
+            sched.app_jobs[#sched.app_jobs + 1] = job
          end
+         job.pid = pid
+         sched.v_running_jobs[tostring(pid)] = job
          return job.pid
       end
+   else
+      _print_fmt("invalid app or app was running")
    end
    return 0
 end
 
-function sched.sandbox.kill_job( job, sig_number )
+function sched.sandbox.f_kill_job( job, sig_number )
    if job.pid > 0 then
       sig_number = sig_number and sig_number or 9
       os.execute(string.format("kill -%d %d", sig_number, job.pid))
+      sched.v_running_jobs[tostring(job.pid)] = nil
       job.pid = 0
+      job.ps = {}
    end
 end
 
-function sched.sandbox.sleep( number )
+function sched.sandbox.f_sleep( number )
    os.execute("sleep " .. number)
 end
 
 -- kill all running_jobs then remove all temp file
-function sched.sandbox.exit( code )
-   for _, job in ipairs(sched.v_running_jobs) do
-      sched.sandbox.kill_job(job)
+function sched.sandbox.f_exit( code )
+   for _, job in pairs(sched.v_running_jobs) do
+      sched.sandbox.f_kill_job(job)
    end
    os.remove(sched.v_lock_path)
    os.remove(sched.v_stop_path)
@@ -212,11 +212,7 @@ local arg_operation, arg_file_path = ...
 if arg_file_path and
    (arg_operation:lower() == "start" or arg_operation:lower() == "stop")
 then
-   -- process platform dependent param
-   local uname = _content_from_exec( "uname" )
-   if uname:find("Darwin") then
-      PS_PREFIX_PARAM = "ps -v -p "
-   end
+   -- do nothing
 else
    _print_fmt("[start | stop] app_job.spec")
    os.exit(0)
@@ -260,17 +256,18 @@ if arg_operation == "stop" then
    end
    _content_from_exec(string.format("touch %s", sched.v_stop_path))
    local i = 0
+   local timeout = 3
    repeat
-      sched.sandbox.sleep(1)
+      sched.sandbox.f_sleep(1)
       _print_fmt("waiting app_job [%s] to stop, %d seconds", sched.v_spec_name, i)
       i = i + 1
-   until (i>15) or (not _content_from_file( sched.v_lock_path ))
-   if i > 15 then
-      _print_fmt("app_job [%s] fail to stop, timeout 15 seconds", sched.v_spec_name)
+   until (i>timeout) or (not _content_from_file( sched.v_lock_path ))
+   if i>timeout then
+      _print_fmt("app_job [%s] fail to stop, timeout %d seconds", sched.v_spec_name, timeout)
    else
       _print_fmt("app_job [%s] stopped", sched.v_spec_name)
    end
-   sched.sandbox.exit(0)
+   sched.sandbox.f_exit(0)
 end
 
 
@@ -287,8 +284,8 @@ end
 
 _print_fmt("app_job [%s] start ...", sched.v_spec_name)
 
-sched.sandbox.app_jobs = sched.v_app_jobs
-sched.sandbox.running_jobs = sched.v_running_jobs
+-- reset vals
+_reset_sandbox_values( sched.sandbox )
 
 -- launch jobs
 sched.f_jobs_launch( sched.sandbox )
@@ -298,13 +295,13 @@ _content_from_exec( string.format("touch %s", sched.v_lock_path) )
 
 -- monitor jobs
 while true do
-   _check_running_jobs( sched )
-   _process_status_of_running_jobs( sched.v_running_jobs )
-   
+   _reset_sandbox_values( sched.sandbox )
+   sched.sandbox.v_running_job_count = _collect_process_status_of_jobs( sched.v_running_jobs )
+
    sched.f_jobs_monitor( sched.sandbox )
    
    if _check_exit_file_mark( sched ) then
       _print_fmt("app_job [%s] exited !", sched.v_spec_name)
-      sched.sandbox.exit( 0 )
+      sched.sandbox.f_exit( 0 )
    end
 end
