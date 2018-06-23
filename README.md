@@ -33,12 +33,11 @@ and environment not test.
 # Features
 
 - launch, monitor app job in group
-- indipendent working dir, shell env
+- independent working dir, shell env
 - start/stop job dynamically
 - monitor job's CPU, MEM, running or stopped state
 - pure Lua/shell command
-- support Linux/FreeBSD/macOS
-- support Lua 5.2/5.3, LuaJIT-2.0.5
+
 
 
 
