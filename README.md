@@ -48,7 +48,7 @@ and environment not test.
 
 ```
 # gcc -Wall -O2 busy_app_demo.c -o busy_app.out # cc in FreeBSD
-# lua app_scheduler.lua start app_job_example.spec &
+# lua app_scheduler.lua start job_spec.lua &
 ```
 
 2. try kill one of them with PID, cause all of 3 app jobs stop
@@ -60,7 +60,7 @@ and environment not test.
 or, to stop all 3 app jobs with
 
 ```
-# lua app_scheduler.lua stop app_job_example.spec
+# lua app_scheduler.lua stop job_spec.lua
 ```
 
-more in app_job_example.spec
+more in [job_spec.lua](https://github.com/lalawue/app_scheduler/blob/master/job_spec.lua).
