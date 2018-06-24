@@ -157,9 +157,9 @@ function _sandbox_start_job( job )
    -- 4. get pid from tmp file
    
    if job.app and (job.pid<=0 or not job.pid) then
-      local sh_cmd = "cd '" .. job.dir .. "';"
-         .. job.env .. " "
-         .. "./" .. job.app .. " > /dev/null & "
+      local sh_cmd = "cd '" .. (job.dir or "/") .. "';"
+         .. (job.env or "") .. " "
+         .. job.app .. " & "
          .. "echo $! > " .. sched.v_tmp_path
       -- _print_fmt( sh_cmd )
       os.execute( sh_cmd )
