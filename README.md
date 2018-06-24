@@ -47,8 +47,8 @@ and environment not test.
 1. first comple busy_app_demo.c, then start 3 app jobs
 
 ```
-# make   # gmake in FreeBSD
-# lua app_scheduler.lua start app_job_example.spec
+# gcc -Wall -O2 busy_app_demo.c -o busy_app.out # cc in FreeBSD
+# lua app_scheduler.lua start app_job_example.spec &
 ```
 
 2. try kill one of them with PID, cause all of 3 app jobs stop

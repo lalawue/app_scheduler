@@ -12,9 +12,9 @@ app_jobs = {
    
    {
       name = "job_1",
-      dir = "/Volumes/Datas/repos/_projs/lua_task",
-      env = "TTT=HAHAHA; BB=CC;",
-      app = "busy_app.out 10000",
+      dir = "/working/dir/",
+      env = "VAL1=AAA;VAL2=BBB;",
+      app = "$PWD/busy_app.out 10000",
       --
       pid = 0, -- process id, valid after sched.f_start_job
       ps = {}, -- process status, contains .cpu, .mem, valid in jobs_monitor
@@ -22,16 +22,16 @@ app_jobs = {
 
    {
       name = "job_2",
-      dir = "/Volumes/Datas/repos/_projs/lua_task",
+      dir = "/working/dir",
       env = "",
-      app = "busy_app.out 1000000",
+      app = "./busy_app.out 1000000",
    },
 
    {
       name = "job_3",
-      dir = "/Volumes/Datas/repos/_projs/lua_task",
+      dir = "/working/dir",
       env = nil,
-      app = "busy_app.out 100000",
+      app = "./busy_app.out 100000",
    },
 },
 
@@ -65,7 +65,8 @@ jobs_scheduler = {
    -- * sched.jobs_monitor( sched ): get job running status before running, loop forever
    -- 
 
-   v_my_pre_defined_value = 100,
+   v_my_pre_defined_value = 123456,
+   v_my_pre_defined_timeout = 20,
    
    f_my_print = function(fmt, ...)
       print(string.format(fmt, ...))
@@ -77,7 +78,7 @@ jobs_scheduler = {
    jobs_launch = function ( sched )
 
       sched.f_my_print("my pre-defined value: %d", sched.v_my_pre_defined_value)
-      sched.v_my_pre_defined_value = 0
+      sched.v_my_pre_defined_value = os.time()
 
       -- you can reset job.env or job.path before .f_start_job
       for _, job in ipairs(sched.v_app_jobs) do
@@ -102,14 +103,14 @@ jobs_scheduler = {
    jobs_monitor = function ( sched )
 
       local time_out = false
-      sched.v_my_pre_defined_value = sched.v_my_pre_defined_value + 1
-      sched.f_my_print("## --- monitor times %d, in <%s> --- ", sched.v_my_pre_defined_value, os.date("%c"))
+      sched.f_my_print("## --- monitor uptime %d, in <%s> --- ",
+                       os.time() - sched.v_my_pre_defined_value, os.date("%c"))
 
       for pid, job in pairs(sched.v_running_jobs) do
          sched.f_my_print("[%s] cpu:%s, mem:%s", job.name, job.ps.cpu, job.ps.mem)
 
          if job.name == "job_1" then
-            if job.count < 20 then
+            if job.count < sched.v_my_pre_defined_timeout then
                job.count = job.count + 1
             else
                time_out = true
