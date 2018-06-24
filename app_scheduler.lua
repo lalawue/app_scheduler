@@ -4,7 +4,7 @@
 -- load app from specifcation, launch then monitor jobs, return
 -- status with callback
 --
--- by lalawue, 2018/06/23
+-- by lalawue, https://github.com/lalawue/app_scheduler
 --
 
 
@@ -231,7 +231,8 @@ if arg_file_path and
 then
    -- do nothing
 else
-   _print_fmt("[start | stop] app_job.spec")
+   _print_fmt("see job_spec.lua demo, more in <https://github.com/lalawue/app_scheduler>\n")
+   _print_fmt("[start | stop] job_spec.lua\n")
    os.exit(0)
 end
 
