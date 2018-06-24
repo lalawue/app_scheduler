@@ -15,9 +15,6 @@ app_jobs = {
       dir = "/working/dir/",
       env = "VAL1=AAA;VAL2=BBB;",
       app = "$PWD/busy_app.out 10000",
-      --
-      pid = 0, -- process id, valid after sched.f_start_job
-      ps = {}, -- process status, contains .cpu, .mem, valid in jobs_monitor
    },
 
    {
