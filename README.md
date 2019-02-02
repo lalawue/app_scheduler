@@ -46,7 +46,7 @@ and environment not test.
 
 # Running Example
 
-1. first comple busy_app_demo.c, then start from jobs
+1. first compile busy_app_demo.c, then start from jobs
 
 ```
 # gcc -Wall -O2 busy_app_demo.c -o busy_app.out # cc in FreeBSD
