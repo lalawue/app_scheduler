@@ -238,11 +238,12 @@ end
 
 
 -- Lua job desc structure, no more backtrace here
-local jobs_spec = load( "return { " ..  _content_from_file( arg_file_path ) .. " } ")()
-if not jobs_spec then
+local jobs_spec = dofile( arg_file_path ) --load( "return { " ..  _content_from_file( arg_file_path ) .. " } ")()
+if type(jobs_spec) ~= "table" then
    _print_fmt("fail to load job spec !")
    os.exit(0)
 else
+   print(jobs_spec.spec_name)
    if type(jobs_spec.spec_name) ~= "string" or
       type(jobs_spec.jobs_scheduler.jobs_launch) ~= "function" or
       type(jobs_spec.jobs_scheduler.jobs_monitor) ~= "function"
